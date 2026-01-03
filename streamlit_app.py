@@ -2,181 +2,110 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# -------------------------------
-# PAGE CONFIG
-# -------------------------------
-st.set_page_config(
-    page_title="SA Mining Executive Dashboard",
-    page_icon="⛏️",
-    layout="wide"
-)
+# ---------------------------
+# Page Config
+# ---------------------------
+st.set_page_config(page_title="SA Mining Story Dashboard", layout="wide", page_icon="⛏️")
 
-st.markdown("## ⛏️ South Africa Mining Industry – Executive Overview")
-
-# -------------------------------
-# LOAD EXCEL DATA
-# -------------------------------
+# ---------------------------
+# Load Data
+# ---------------------------
 @st.cache_data
 def load_data():
-    file = "Mining industry from 2012 to 2022.xlsx"
-    
-    # Read Excel
-    df_raw = pd.read_excel(file, header=None)
-
-    # Select relevant columns: code=2, mineral=3, years=10–13
-    df = df_raw.iloc[1:, [2, 3, 10, 11, 12, 13]].dropna(subset=[2])
-    df.columns = ['code', 'mineral', '2012', '2015', '2019', '2022']
-
-    # Extract metric code (e.g., FISALES)
+    df_raw = pd.read_excel("Mining industry from 2012 to 2022.xlsx", header=None)
+    df = df_raw.iloc[1:, [2,3,10,11,12,13]].dropna(subset=[2])
+    df.columns = ['code','mineral','2012','2015','2019','2022']
     df['metric'] = df['code'].astype(str).str.extract(r'^([A-Z]+)')[0]
-
-    # Melt to long format
-    df_long = df.melt(
-        id_vars=['code', 'metric', 'mineral'],
-        value_vars=['2012', '2015', '2019', '2022'],
-        var_name='Year',
-        value_name='Value'
-    )
+    df_long = df.melt(id_vars=['code','metric','mineral'], value_vars=['2012','2015','2019','2022'],
+                      var_name='Year', value_name='Value')
     df_long['Year'] = df_long['Year'].astype(int)
     df_long['Value'] = pd.to_numeric(df_long['Value'], errors='coerce')
-    df_long = df_long.dropna(subset=['Value'])
-
-    # Clean mineral names
-    df_long['Mineral'] = (
-        df_long['mineral']
-        .astype(str)
-        .str.replace('Mining of ', '', regex=False)
-        .str.replace(r'\s*\(.*\)', '', regex=True)
-        .str.strip()
-        .str.title()
-    )
-    df_long.loc[df_long['code'].astype(str).str.endswith('29999'), 'Mineral'] = 'Total Industry'
-
-    # Map metric codes to human-readable names
-    metric_map = {
-        'FOPEN': 'Opening Stock',
-        'FISALES': 'Sales Revenue',
-        'FINC': 'Total Income',
-        'FEXP': 'Total Expenditure',
-        'FCLOSE': 'Closing Stock',
-        'FEMPTOT': 'Employment (Persons)',
-        'FOTHIN': 'Other Income',
-        'FPURCH': 'Purchases',
-        'FSUB': 'Subsidies',
-        'FSAL': 'Salaries & Wages',
-        'FUTILITIES': 'Utilities',
-        'FLBROKER': 'Broker Fees',
-        'FOTHEX': 'Other Expenses'
-    }
+    df_long['Mineral'] = df_long['mineral'].astype(str).str.replace('Mining of ','',regex=False).str.replace(r'\s*\(.*\)','',regex=True).str.strip().str.title()
+    df_long.loc[df_long['code'].astype(str).str.endswith('29999'),'Mineral'] = 'Total Industry'
+    metric_map = {'FOPEN':'Opening Stock','FISALES':'Sales Revenue','FINC':'Total Income','FEXP':'Total Expenditure',
+                  'FCLOSE':'Closing Stock','FEMPTOT':'Employment (Persons)'}
     df_long['Metric'] = df_long['metric'].map(metric_map).fillna(df_long['metric'])
-
     return df_long
 
 df = load_data()
 
-# -------------------------------
-# FILTER BAR (TOP CONTROL)
-# -------------------------------
-st.markdown("### Filters")
-col1, col2, col3 = st.columns([2, 4, 4])
+# ---------------------------
+# Sidebar Navigation
+# ---------------------------
+page = st.sidebar.radio("Select Page", [
+    "Executive Overview",
+    "Revenue Deep Dive",
+    "Employment & Productivity",
+    "Costs & Profitability",
+    "Provincial View"
+])
 
-with col1:
-    metric_options = sorted(df['Metric'].unique())
-    selected_metric = st.selectbox(
-        "Metric",
-        metric_options,
-        index=metric_options.index('Sales Revenue') if 'Sales Revenue' in metric_options else 0
-    )
+# ---------------------------
+# Common Filters
+# ---------------------------
+years = sorted(df['Year'].unique())
+selected_year = st.sidebar.slider("Year Range", min_value=min(years), max_value=max(years), value=(min(years), max(years)))
 
-with col2:
-    minerals = sorted(df[df['Metric'] == selected_metric]['Mineral'].unique())
-    selected_minerals = st.multiselect(
-        "Minerals",
-        minerals,
-        default=[m for m in ['Total Industry','Platinum Group Metal Ore','Coal And Lignite'] if m in minerals]
-    )
+minerals = sorted(df['Mineral'].unique())
+selected_minerals = st.sidebar.multiselect("Minerals", minerals, default=['Total Industry','Platinum Group Metal Ore','Coal And Lignite'])
 
-with col3:
-    years = sorted(df['Year'].unique(), reverse=True)
-    selected_year = st.selectbox("Year", years, index=0)
+metrics = sorted(df['Metric'].unique())
+selected_metric = st.sidebar.selectbox("Metric", metrics, index=metrics.index('Sales Revenue') if 'Sales Revenue' in metrics else 0)
 
-# -------------------------------
-# APPLY FILTERS
-# -------------------------------
 filtered_df = df[
-    (df['Metric'] == selected_metric) &
+    (df['Year'].between(selected_year[0], selected_year[1])) &
     (df['Mineral'].isin(selected_minerals)) &
-    (df['Year'] <= selected_year)
+    (df['Metric']==selected_metric)
 ]
 
-# -------------------------------
-# KPI CARDS
-# -------------------------------
-st.markdown("### Executive KPIs")
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+# ---------------------------
+# Page Functions
+# ---------------------------
+def executive_overview():
+    st.markdown("### Key KPIs")
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    total_value = filtered_df['Value'].sum()
+    avg_value = filtered_df.groupby('Year')['Value'].sum().mean()
+    num_minerals = filtered_df['Mineral'].nunique()
+    num_years = filtered_df['Year'].nunique()
+    kpi1.metric("Total", f"{total_value:,.0f}")
+    kpi2.metric("Average Annual", f"{avg_value:,.0f}")
+    kpi3.metric("Minerals", num_minerals)
+    kpi4.metric("Years", num_years)
 
-total_value = filtered_df['Value'].sum()
-avg_value = filtered_df.groupby('Year')['Value'].sum().mean()
-num_minerals = filtered_df['Mineral'].nunique()
-num_years = filtered_df['Year'].nunique()
+    st.markdown("### Trend Chart")
+    line_fig = px.line(filtered_df, x='Year', y='Value', color='Mineral', markers=True)
+    st.plotly_chart(line_fig, use_container_width=True)
 
-kpi1.metric("Total", f"{total_value:,.0f}")
-kpi2.metric("Average Annual", f"{avg_value:,.0f}")
-kpi3.metric("Minerals", num_minerals)
-kpi4.metric("Years", num_years)
+def revenue_deep_dive():
+    st.markdown("Revenue Deep Dive - Treemap Example")
+    treemap_df = filtered_df.groupby('Mineral', as_index=False)['Value'].sum()
+    fig = px.treemap(treemap_df, path=['Mineral'], values='Value', title='2022 Revenue Share')
+    st.plotly_chart(fig, use_container_width=True)
 
-st.divider()
+def employment_productivity():
+    st.markdown("Employment & Productivity - Sample")
+    emp_df = df[(df['Metric']=='Employment (Persons)') & (df['Mineral'].isin(selected_minerals))]
+    fig = px.line(emp_df, x='Year', y='Value', color='Mineral', markers=True, title="Employment Trend")
+    st.plotly_chart(fig, use_container_width=True)
 
-# -------------------------------
-# LINE CHART
-# -------------------------------
-st.markdown("### Production Trend Over Time")
-line_df = df[
-    (df['Metric'] == selected_metric) &
-    (df['Mineral'].isin(selected_minerals))
-]
+def costs_profitability():
+    st.markdown("Costs & Profitability - Placeholder")
+    st.write(filtered_df.head())
 
-line_fig = px.line(
-    line_df,
-    x='Year',
-    y='Value',
-    color='Mineral',
-    markers=True,
-    title=f"{selected_metric} Trend"
-)
-st.plotly_chart(line_fig, use_container_width=True)
+def provincial_view():
+    st.markdown("Provincial Sales Map - Placeholder")
+    st.write(filtered_df.head())
 
-# -------------------------------
-# PIE + BAR CHARTS
-# -------------------------------
-col_left, col_right = st.columns(2)
+# ---------------------------
+# Page Dispatcher
+# ---------------------------
+pages = {
+    "Executive Overview": executive_overview,
+    "Revenue Deep Dive": revenue_deep_dive,
+    "Employment & Productivity": employment_productivity,
+    "Costs & Profitability": costs_profitability,
+    "Provincial View": provincial_view
+}
 
-with col_left:
-    st.markdown("### Contribution by Mineral")
-    pie_fig = px.pie(
-        filtered_df.groupby('Mineral', as_index=False)['Value'].sum(),
-        names='Mineral',
-        values='Value',
-        hole=0.4
-    )
-    st.plotly_chart(pie_fig, use_container_width=True)
-
-with col_right:
-    st.markdown("### Top Minerals by Value")
-    bar_fig = px.bar(
-        filtered_df.groupby('Mineral', as_index=False)['Value'].sum()
-        .sort_values('Value', ascending=False),
-        x='Mineral',
-        y='Value'
-    )
-    st.plotly_chart(bar_fig, use_container_width=True)
-
-# -------------------------------
-# DATA TABLE
-# -------------------------------
-st.markdown("### Detailed Data")
-st.dataframe(
-    filtered_df.sort_values(['Year','Value'], ascending=[True, False]),
-    use_container_width=True,
-    height=350
-)
+pages[page]()
