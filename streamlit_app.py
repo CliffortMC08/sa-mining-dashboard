@@ -24,12 +24,12 @@ def load_data():
     df = df[[2, 3, 10, 11, 12, 13]].dropna(subset=[2])
     df.columns = ['code', 'mineral', '2012', '2015', '2019', '2022']
 
-    # Extract metric safely (all leading letters before digits)
+    # Extract metric safely
     df['metric'] = df['code'].astype(str).str.extract(r'^([A-Z]+)')[0]
 
-    # Convert to long format
+    # 🔴 FIX: keep 'code' during melt
     df_long = df.melt(
-        id_vars=['metric', 'mineral'],
+        id_vars=['code', 'metric', 'mineral'],
         value_vars=['2012', '2015', '2019', '2022'],
         var_name='year',
         value_name='value'
@@ -39,7 +39,7 @@ def load_data():
     df_long['value'] = pd.to_numeric(df_long['value'], errors='coerce')
     df_long = df_long.dropna(subset=['value'])
 
-    # Clean and normalize mineral names
+    # Clean mineral names
     df_long['mineral_clean'] = (
         df_long['mineral']
         .astype(str)
@@ -49,13 +49,13 @@ def load_data():
         .str.lower()
     )
 
-    # Identify Total Industry rows
+    # Identify Total Industry rows (now works)
     df_long.loc[
         df_long['code'].astype(str).str.endswith('29999'),
         'mineral_clean'
     ] = 'total industry'
 
-    # Human-readable metric names
+    # Metric mapping
     metric_map = {
         'FOPEN': 'Opening Stock',
         'FISALES': 'Sales Revenue',
@@ -85,23 +85,17 @@ df = load_data()
 st.sidebar.header("Filters")
 
 available_metrics = sorted(df['metric_name'].unique())
-default_metric_index = (
-    available_metrics.index('Sales Revenue')
-    if 'Sales Revenue' in available_metrics else 0
-)
-
 selected_metric = st.sidebar.selectbox(
     "Select Metric",
     available_metrics,
-    index=default_metric_index
+    index=available_metrics.index('Sales Revenue')
+    if 'Sales Revenue' in available_metrics else 0
 )
 
-# Minerals available for the selected metric
 minerals = sorted(
     df[df['metric_name'] == selected_metric]['mineral_clean'].unique()
 )
 
-# SAFE dynamic defaults (cannot fail)
 preferred_defaults = [
     'total industry',
     'platinum group metal ore',
@@ -126,13 +120,10 @@ selected_year = st.sidebar.selectbox(
 )
 
 # --------------------------------------------------
-# Filtered data
+# Visuals
 # --------------------------------------------------
 filtered = df[df['metric_name'] == selected_metric]
 
-# --------------------------------------------------
-# Bar chart
-# --------------------------------------------------
 bar_data = (
     filtered[filtered['year'] == selected_year]
     .sort_values('value', ascending=False)
@@ -148,24 +139,13 @@ fig_bar = px.bar(
     title=f"{selected_metric} in {selected_year}"
 )
 
-fig_bar.update_traces(
-    texttemplate='%{text:,.0f}',
-    textposition='outside'
-)
-
-fig_bar.update_layout(
-    xaxis_tickangle=45,
-    showlegend=False
-)
+fig_bar.update_traces(texttemplate='%{text:,.0f}', textposition='outside')
+fig_bar.update_layout(xaxis_tickangle=45, showlegend=False)
 
 st.plotly_chart(fig_bar, use_container_width=True)
 
-# --------------------------------------------------
-# Line chart
-# --------------------------------------------------
 if selected_minerals:
     line_data = filtered[filtered['mineral_clean'].isin(selected_minerals)]
-
     fig_line = px.line(
         line_data,
         x='year',
@@ -174,40 +154,6 @@ if selected_minerals:
         markers=True,
         title=f"{selected_metric} Trends"
     )
-
     st.plotly_chart(fig_line, use_container_width=True)
-else:
-    st.info("Select minerals above to see trends.")
-
-# --------------------------------------------------
-# Key highlights
-# --------------------------------------------------
-st.markdown("### Key Highlights (2012 → 2022)")
-
-sales_2012 = df.query(
-    "metric_name == 'Sales Revenue' and year == 2012 and mineral_clean == 'total industry'"
-)['value'].sum()
-
-sales_2022 = df.query(
-    "metric_name == 'Sales Revenue' and year == 2022 and mineral_clean == 'total industry'"
-)['value'].sum()
-
-sales_growth = ((sales_2022 - sales_2012) / sales_2012 * 100) if sales_2012 > 0 else 0
-
-emp_2012 = df.query(
-    "metric_name == 'Employment (Persons)' and year == 2012 and mineral_clean == 'total industry'"
-)['value'].sum()
-
-emp_2022 = df.query(
-    "metric_name == 'Employment (Persons)' and year == 2022 and mineral_clean == 'total industry'"
-)['value'].sum()
-
-emp_change = ((emp_2022 - emp_2012) / emp_2012 * 100) if emp_2012 > 0 else 0
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Sales 2012", f"R{sales_2012:,.0f}M")
-c2.metric("Sales 2022", f"R{sales_2022:,.0f}M", f"{sales_growth:+.1f}%")
-c3.metric("Employment 2012", f"{int(emp_2012):,}")
-c4.metric("Employment 2022", f"{int(emp_2022):,}", f"{emp_change:+.1f}%")
 
 st.success("Dashboard loaded successfully.")
