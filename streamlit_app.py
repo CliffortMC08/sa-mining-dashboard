@@ -3,10 +3,10 @@ import pandas as pd
 import plotly.express as px
 
 # --------------------------------------------------
-# App Config
+# App configuration
 # --------------------------------------------------
 st.set_page_config(
-    page_title="SA Mining Industry Dashboard 2012-2022",
+    page_title="SA Mining Industry Dashboard 2012–2022",
     layout="wide"
 )
 
@@ -14,7 +14,7 @@ st.title("🇿🇦 South Africa Mining Industry Dashboard (2012–2022)")
 st.markdown("Interactive view of Stats SA mining data • Current prices (R million or persons)")
 
 # --------------------------------------------------
-# Data Loading
+# Data loading
 # --------------------------------------------------
 @st.cache_data
 def load_data():
@@ -24,10 +24,10 @@ def load_data():
     df = df[[2, 3, 10, 11, 12, 13]].dropna(subset=[2])
     df.columns = ['code', 'mineral', '2012', '2015', '2019', '2022']
 
-    # Safer metric extraction (all letters before digits)
+    # Extract metric safely (all leading letters before digits)
     df['metric'] = df['code'].astype(str).str.extract(r'^([A-Z]+)')[0]
 
-    # Melt to long format
+    # Convert to long format
     df_long = df.melt(
         id_vars=['metric', 'mineral'],
         value_vars=['2012', '2015', '2019', '2022'],
@@ -39,7 +39,7 @@ def load_data():
     df_long['value'] = pd.to_numeric(df_long['value'], errors='coerce')
     df_long = df_long.dropna(subset=['value'])
 
-    # Clean mineral names (normalized to lowercase)
+    # Clean and normalize mineral names
     df_long['mineral_clean'] = (
         df_long['mineral']
         .astype(str)
@@ -49,12 +49,13 @@ def load_data():
         .str.lower()
     )
 
+    # Identify Total Industry rows
     df_long.loc[
         df_long['code'].astype(str).str.endswith('29999'),
         'mineral_clean'
     ] = 'total industry'
 
-    # Metric mapping
+    # Human-readable metric names
     metric_map = {
         'FOPEN': 'Opening Stock',
         'FISALES': 'Sales Revenue',
@@ -79,12 +80,12 @@ def load_data():
 df = load_data()
 
 # --------------------------------------------------
-# Sidebar Filters
+# Sidebar filters
 # --------------------------------------------------
 st.sidebar.header("Filters")
 
 available_metrics = sorted(df['metric_name'].unique())
-default_metric = (
+default_metric_index = (
     available_metrics.index('Sales Revenue')
     if 'Sales Revenue' in available_metrics else 0
 )
@@ -92,16 +93,17 @@ default_metric = (
 selected_metric = st.sidebar.selectbox(
     "Select Metric",
     available_metrics,
-    index=default_metric
+    index=default_metric_index
 )
 
-minerals_list = sorted(
+# Minerals available for the selected metric
+minerals = sorted(
     df[df['metric_name'] == selected_metric]['mineral_clean'].unique()
 )
 
-# Safe dynamic defaults
-default_minerals = ['total industry']
-major_minerals = [
+# SAFE dynamic defaults (cannot fail)
+preferred_defaults = [
+    'total industry',
     'platinum group metal ore',
     'coal and lignite',
     'gold and uranium ore',
@@ -109,13 +111,11 @@ major_minerals = [
     'diamonds'
 ]
 
-for m in major_minerals:
-    if m in minerals_list and len(default_minerals) < 6:
-        default_minerals.append(m)
+default_minerals = [m for m in preferred_defaults if m in minerals]
 
 selected_minerals = st.sidebar.multiselect(
     "Select Minerals for Trend",
-    options=minerals_list,
+    options=minerals,
     default=default_minerals
 )
 
@@ -126,12 +126,12 @@ selected_year = st.sidebar.selectbox(
 )
 
 # --------------------------------------------------
-# Filtering
+# Filtered data
 # --------------------------------------------------
 filtered = df[df['metric_name'] == selected_metric]
 
 # --------------------------------------------------
-# Bar Chart
+# Bar chart
 # --------------------------------------------------
 bar_data = (
     filtered[filtered['year'] == selected_year]
@@ -143,9 +143,9 @@ fig_bar = px.bar(
     bar_data,
     x='mineral_clean',
     y='value',
-    title=f"{selected_metric} in {selected_year}",
     color='value',
-    text='value'
+    text='value',
+    title=f"{selected_metric} in {selected_year}"
 )
 
 fig_bar.update_traces(
@@ -161,7 +161,7 @@ fig_bar.update_layout(
 st.plotly_chart(fig_bar, use_container_width=True)
 
 # --------------------------------------------------
-# Line Chart
+# Line chart
 # --------------------------------------------------
 if selected_minerals:
     line_data = filtered[filtered['mineral_clean'].isin(selected_minerals)]
@@ -180,26 +180,26 @@ else:
     st.info("Select minerals above to see trends.")
 
 # --------------------------------------------------
-# Key Highlights
+# Key highlights
 # --------------------------------------------------
 st.markdown("### Key Highlights (2012 → 2022)")
 
 sales_2012 = df.query(
-    "metric_name=='Sales Revenue' and year==2012 and mineral_clean=='total industry'"
+    "metric_name == 'Sales Revenue' and year == 2012 and mineral_clean == 'total industry'"
 )['value'].sum()
 
 sales_2022 = df.query(
-    "metric_name=='Sales Revenue' and year==2022 and mineral_clean=='total industry'"
+    "metric_name == 'Sales Revenue' and year == 2022 and mineral_clean == 'total industry'"
 )['value'].sum()
 
 sales_growth = ((sales_2022 - sales_2012) / sales_2012 * 100) if sales_2012 > 0 else 0
 
 emp_2012 = df.query(
-    "metric_name=='Employment (Persons)' and year==2012 and mineral_clean=='total industry'"
+    "metric_name == 'Employment (Persons)' and year == 2012 and mineral_clean == 'total industry'"
 )['value'].sum()
 
 emp_2022 = df.query(
-    "metric_name=='Employment (Persons)' and year==2022 and mineral_clean=='total industry'"
+    "metric_name == 'Employment (Persons)' and year == 2022 and mineral_clean == 'total industry'"
 )['value'].sum()
 
 emp_change = ((emp_2022 - emp_2012) / emp_2012 * 100) if emp_2012 > 0 else 0
@@ -210,4 +210,4 @@ c2.metric("Sales 2022", f"R{sales_2022:,.0f}M", f"{sales_growth:+.1f}%")
 c3.metric("Employment 2012", f"{int(emp_2012):,}")
 c4.metric("Employment 2022", f"{int(emp_2022):,}", f"{emp_change:+.1f}%")
 
-st.success("Dashboard loaded successfully! Explore different metrics and minerals.")
+st.success("Dashboard loaded successfully.")
