@@ -14,7 +14,7 @@ def load_data():
     mask = df_raw[2].astype(str).str.startswith(('FISALES', 'FINC', 'FEXP', 'FEMPTOT'))
     df = df_raw[mask].copy()
     
-    # Set columns properly (header in row 0, data from row 1)
+    # Set columns properly
     df.columns = ['report', 'industry', 'code', 'mineral', 'sic', 'country', 'prices', 'unit', 
                   'start', 'end', '2012', '2015', '2019', '2022']
     
